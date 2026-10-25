@@ -54,4 +54,29 @@ function renderFeatured(all){
 function render(){let all=merged();renderFeatured(all);let options=[...new Set(all.map(r=>r.venue).filter(Boolean))].sort((a,b)=>VENUES.indexOf(a)-VENUES.indexOf(b)),old=$('venue').value;$('venue').innerHTML='<option value="">全国すべて</option>'+options.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');$('venue').value=options.includes(old)?old:'';let rows=all.map(r=>({...r,live:liveP(r.cond)})).filter(r=>Number.isFinite(dt(r.cond?.cutoff))&&now()<dt(r.cond.cutoff)&&valid(r.live.p??r.p)&&(r.live.p??r.p)>=MIN).filter(r=>!$('venue').value||r.venue===$('venue').value);if($('order').value==='prob')rows.sort((a,b)=>(b.live.p??b.p)-(a.live.p??a.p));else rows.sort((a,b)=>dt(a.cond.cutoff)-dt(b.cond.cutoff));$('count').textContent=`40%以上：${rows.length}R ／ 直前推定あり：${rows.filter(r=>r.live.p!==null).length}R`;$('cards').innerHTML=rows.length?rows.map(r=>{let c=r.cond,w=c?.weather||{},p1=c?.players?.[0]?.name||r.one||'—',p2=c?.players?.[1]?.name||r.two||'—';return `<article class="race"><div class="race-head"><span class="venue">${esc(r.venue)} ${esc(r.race)}R</span><span class="cutoff">締切 ${hhmm(c.cutoff)}</span></div><div class="pair">1号艇 ${esc(p1)} ／ 2号艇 ${esc(p2)}</div><div class="numbers"><div class="number"><label>事前確率</label><strong>${pct(r.p)}</strong><small>出走表を使用</small></div><div class="number live"><label>直前確率${r.live.unverified?' ※':''}</label><strong>${pct(r.live.p)}</strong><small>${esc(r.live.p!==null?(r.live.unverified?'未検証の参考値':'展示情報反映'):'展示情報待ち')}</small></div></div><details><summary>展示・気象の詳細</summary><p>${esc(r.live.reason)} ／ 風速 ${esc(val(w.wind_speed)??'未取得')} m/s ／ 観測 ${stamp(w.observed_at)} ／ 展示 ${stamp(c.basic_available)}</p></details></article>`}).join(''):'<div class="empty">現在、40%以上の候補はありません。条件を満たすレースがない日は表示しません。</div>'}
 async function refresh(){if(busy)return;busy=true;$('reload').disabled=true;$('reload').textContent='確認中…';const errors=[];try{base=parseBase(await get(REPO+'v2-preview.html?t='+now()))}catch(e){base=[];errors.push('事前: '+e.message)}try{rawCurrent=parseC(JSON.parse(await get(REPO+'conditions.json?t='+now())))}catch(e){rawCurrent=null;errors.push('直前: '+e.message)}try{let a=JSON.parse(await get(REPO+'accuracy.json?t='+now()));accuracy=a.date===jstDay()?a:null}catch(e){accuracy=null;errors.push('的中率: 取得待ち')}if(now()>nextAPI){nextAPI=now()+180000;try{let a=JSON.parse(await get(API));if(a.type==='file'&&a.encoding==='base64'){let binary=atob(a.content.replace(/\s/g,''));a=JSON.parse(new TextDecoder().decode(Uint8Array.from(binary,c=>c.charCodeAt(0))))}apiCurrent=parseC(a)}catch(e){apiCurrent=null}}weather=[rawCurrent,apiCurrent].filter(Boolean).sort((a,b)=>dt(b.generated_at)-dt(a.generated_at))[0]||null;$('rawStamp').textContent=rawCurrent?stamp(rawCurrent.generated_at):'未取得';$('apiStamp').textContent=apiCurrent?stamp(apiCurrent.generated_at):'未取得';$('diff').textContent=rawCurrent&&apiCurrent?Math.round((dt(apiCurrent.generated_at)-dt(rawCurrent.generated_at))/1000)+'秒':'比較待ち';$('chosenStamp').textContent=weather?stamp(weather.generated_at):'未取得';$('status').textContent=errors.length?errors.join(' ／ '):'本日の保存データを表示しています';$('diagNote').textContent='画面確認 '+stamp(new Date().toISOString())+'。データの取得・配信には遅延が生じる場合があります。';renderAccuracy();render();busy=false;$('reload').disabled=false;$('reload').textContent='最新データに更新'}
 $('reload').addEventListener('click',refresh);$('venue').addEventListener('change',render);$('order').addEventListener('change',render);$('unverified').addEventListener('change',render);refresh();setInterval(()=>{if(!document.hidden)refresh()},30000);
+ function updateCountdown(){
+  const box=document.getElementById('featured');
+  if(!box)return;
+  const races=merged().map(r=>({...r,live:liveP(r.cond)}))
+    .filter(r=>Number.isFinite(dt(r.cond?.cutoff))&&now()<dt(r.cond.cutoff)&&valid(r.live.p??r.p)&&(r.live.p??r.p)>=MIN)
+    .sort((a,b)=>(b.live.p??b.p)-(a.live.p??a.p));
+  const name=races.length?railsName(races[0]):'';
+  if(box.querySelector('.featured-title')?.textContent!==name){
+    render();
+  }
+  let el=box.querySelector('#cutoffCountdown');
+  if(!races.length)return;
+  if(!el){
+    el=document.createElement('div');
+    el.id='cutoffCountdown';
+    el.style.cssText='font-size:23px;font-weight:850;margin-top:12px;color:#2859bb';
+    box.appendChild(el);
+  }
+  const sec=Math.max(0,Math.ceil((dt(races[0].cond.cutoff)-now())/1000));
+  el.textContent='締切まで '+Math.floor(sec/60)+'分'+String(sec%60).padStart(2,'0')+'秒';
+  el.style.color=sec<=360?'#b42318':'#2859bb';
+}
+function railsName(r){return r.venue+' '+r.race+'R'}
+setInterval(updateCountdown,1000);
+updateCountdown();
 </script></body></html>
